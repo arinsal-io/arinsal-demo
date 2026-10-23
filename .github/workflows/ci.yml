@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.runtime }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, ubuntu-24.04-arm]
+        runtime: [erts, arinsal]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up asdf
+        if: matrix.runtime == 'arinsal'
+        uses: asdf-vm/actions/setup@v4
+
+      - name: Install the private Arinsal asdf plugin and tools
+        if: matrix.runtime == 'arinsal'
+        env:
+          ARINSAL_TOKEN: ${{ secrets.ARINSAL_TOKEN }}
+          GH_TOKEN: ${{ secrets.ARINSAL_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.ARINSAL_TOKEN }}
+        run: |
+          git config --global url."https://x-access-token:${ARINSAL_TOKEN}@github.com/".insteadOf "https://github.com/"
+          asdf plugin add arinsal https://github.com/arinsal-io/asdf-arinsal.git
+          asdf plugin add elixir https://github.com/asdf-vm/asdf-elixir.git
+          asdf install
+
+      - name: Set up Erlang/OTP and Elixir
+        if: matrix.runtime == 'erts'
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "29.1.1"
+          elixir-version: "1.20.4"
+          version-type: strict
+
+      - name: Fetch dependencies
+        run: mix local.hex --force && mix deps.get
+
+      - name: Run tests
+        run: mix test
